@@ -1,49 +1,67 @@
 import collections
 
-def analyze_with_normalization(input_filename, output_filename="results.txt"):
+def get_weights(filename):
+    """Calculates letter weights (wi or yi) for a given file."""
     try:
-        # 1. Read and Process the text
-        with open(input_filename, 'r', encoding='utf-8') as file:
+        with open(filename, 'r', encoding='utf-8') as file:
             content = file.read().lower()
-            
-            # Filter letters including ä, ö, å
+            # Keeps only letters, including Finnish ä and ö.
             letters = [char for char in content if char.isalpha()]
-            
+            if not letters:
+                return None
             counts = collections.Counter(letters)
-            total_letters = len(letters)
-            
-            # Sort keys: a...z, then others like ä, ö
-            sorted_chars = sorted(counts.keys())
-
-        # 2. Write the detailed results and normalization
-        with open(output_filename, 'w', encoding='utf-8') as out_file:
-            out_file.write(f"--- Deeper Analysis: {input_filename} ---\n")
-            out_file.write(f"Total letters (N): {total_letters}\n\n")
-            
-            # Header for our table
-            out_file.write(f"{'Letter':<10} | {'Count':<10} | {'Weight (w)':<10}\n")
-            out_file.write("-" * 35 + "\n")
-            
-            for char in sorted_chars:
-                count = counts[char]
-                # Calculate weight (Normalization step)
-                weight = count / total_letters
-                
-                # Format to 4 decimal places for precision
-                line = f"{char.upper():<10} | {count:<10} | {weight:.4f}\n"
-                out_file.write(line)
-            
-            out_file.write("-" * 35 + "\n")
-            out_file.write("Note: Sum of weights will equal 1.0\n")
-        
-        print(f"Analysis complete! Results saved to '{output_filename}'.")
-
+            total = len(letters)
+            # w = count / N
+            return {char: count / total for char, count in counts.items()}
     except FileNotFoundError:
-        print(f"Error: Could not find '{input_filename}'.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"Warning: {filename} not found.")
+        return None
 
+def run_ml_analysis(test_files, training_files, output_filename="ml_results.txt"):
+    # 1. LEARNING PHASE
+    learning_data = {}
+    for lang, fname in training_files.items():
+        weights = get_weights(fname)
+        if weights:
+            learning_data[lang] = weights
+
+    # 2. ESTIMATION PHASE & DATA EXPORT
+    with open(output_filename, 'w', encoding='utf-8') as out:
+        # Table Header
+        header = f"{'File':<12} | {'Est. Lang':<10} | {'Estimate (%)':<15}\n"
+        out.write("--- Machine Learning Language Estimation Results ---\n")
+        out.write(header)
+        out.write("-" * 45 + "\n")
+
+        for test_file in test_files:
+            y_weights = get_weights(test_file)
+            if not y_weights:
+                continue
+
+            for lang_name, w_weights in learning_data.items():
+                # Get unique characters from both training and test data
+                all_chars = set(w_weights.keys()).union(set(y_weights.keys()))
+                
+                # Equation: P = 1 - sum |wi - yi|
+                sum_diff = sum(abs(w_weights.get(c, 0) - y_weights.get(c, 0)) for c in all_chars)
+                p = 1 - sum_diff
+                percentage = max(0, p * 100) # Format as percentage
+
+                # Write result row
+                out.write(f"{test_file:<12} | {lang_name:<10} | {percentage:<15.6f}%\n")
+            out.write("-" * 45 + "\n")
+
+    print(f"Machine learning results have been exported to {output_filename}")
+
+# --- EXECUTION ---
 if __name__ == "__main__":
-    file_to_read = input("Enter the input filename: ")
-    output_name = file_to_read.replace(".txt", "_normalized.txt")
-    analyze_with_normalization(file_to_read, output_name)
+    # Define your training data (Learning Data)
+    training = {
+        "Finnish": "kalevala.txt",
+        "English": "romeo_et_juliet.txt"
+    }
+
+    # Files to analyze (from Moodle)
+    to_analyze = ["pg18857.txt", "pg27417.txt", "pg48460.txt"]
+
+    run_ml_analysis(to_analyze, training)
